@@ -126,6 +126,7 @@ function StatusRow({ status, noiseLevel, warnAt, critAt }) {
 // ═════════════════════════════════════════════════════════════════════════════
 const SOURCE_TABS = [
   { key: 'microphone', label: 'Microphone', icon: Mic,  desc: 'Your device microphone' },
+  { key: 'hardware', label: 'Grove / Arduino', icon: Cpu, desc: 'Real sound sensor' },
   { key: 'simulation', label: 'Simulation', icon: Zap,  desc: 'Demo mode — no hardware' },
 ];
 
@@ -194,6 +195,31 @@ export default function LiveMonitorPage() {
     clearInterval(simRef.current);
     simRef.current = null;
     setSimScenario('random');
+  };
+
+  const handleSendGroveTest = async () => {
+    try {
+      const payload = {
+        deviceId: 'GROVE_SOUND_01',
+        locationId: selectedLocationId,
+        noiseLevel: 56,
+        deviceName: 'Grove Sound Sensor',
+        status: 'WARNING',
+        timestamp: new Date().toISOString(),
+      };
+
+      const response = await fetch('http://localhost:3001/reading', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Sensor relay rejected the reading');
+      }
+    } catch (error) {
+      console.error('[Grove] Test reading failed:', error);
+    }
   };
 
   const simRunning = !!simRef.current;
@@ -574,6 +600,35 @@ export default function LiveMonitorPage() {
 
                 <p className="text-xs text-center text-slate-400">
                   Relative level · Not calibrated dB(A) · Accuracy varies by device
+                </p>
+              </div>
+            )}
+
+            {/* Hardware / Grove panel */}
+            {sourceTab === 'hardware' && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                  <Cpu className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-emerald-700">
+                    <strong>Arduino + Grove sensor</strong> — connect a real sound sensor to the Uno and send readings to the local relay.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
+                  <p><span className="font-bold text-slate-700">1.</span> Connect the Grove sound sensor to A0 on the Arduino Uno.</p>
+                  <p><span className="font-bold text-slate-700">2.</span> Upload the sample sketch from the project README.</p>
+                  <p><span className="font-bold text-slate-700">3.</span> Run <span className="font-mono bg-slate-200 px-1 rounded">node relay-server.js</span> and then the bridge script.</p>
+                </div>
+
+                <button
+                  onClick={handleSendGroveTest}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all active:scale-95"
+                >
+                  <Cpu className="w-4 h-4" /> Send Test Grove Reading
+                </button>
+
+                <p className="text-xs text-center text-slate-400">
+                  Use <span className="font-mono text-slate-500">http://localhost:3001/reading</span> as the sensor endpoint.
                 </p>
               </div>
             )}

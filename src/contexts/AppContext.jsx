@@ -61,50 +61,18 @@ export function AppProvider({ children }) {
   }, []);
 
   // ── Derived helpers ────────────────────────────────────────────────────────
-  const getLocation = useCallback(id => locations.find(l => l.locationId === id), [locations]);
+  const normalizeLocationKey = useCallback((value) => {
+    return String(value ?? '').trim().replace(/\s+/g, '_').toUpperCase();
+  }, []);
+
+  const getLocation = useCallback((id) => {
+    const target = normalizeLocationKey(id);
+    return locations.find(l =>
+      normalizeLocationKey(l.locationId) === target ||
+      normalizeLocationKey(l.locationName) === target
+    );
+  }, [locations, normalizeLocationKey]);
   const selectedLocation = getLocation(selectedLocationId) || locations[0];
-
-  // ── Ingest a noise reading (from simulation OR hardware API) ───────────────
-  const ingestReading = useCallback((locationId, noiseLevel, source = 'simulation') => {
-    const timestamp = new Date();
-    const loc = locations.find(l => l.locationId === locationId);
-    if (!loc) return;
-
-    const wt = loc.warningThreshold  || 41;
-    const ct = loc.criticalThreshold || 61;
-    const { status } = getNoiseStatus(noiseLevel, wt, ct);
-
-    // Update location's current noise
-    setLocations(prev => prev.map(l =>
-      l.locationId === locationId
-        ? { ...l, currentNoise: noiseLevel, lastUpdated: timestamp, dataSource: source }
-        : l
-    ));
-
-    // Append to history
-    setReadingHistory(prev => {
-      const existing = prev[locationId] || [];
-      const updated  = [...existing, { timestamp, noiseLevel, source }];
-      return { ...prev, [locationId]: updated.slice(-settings.maxHistoryPoints) };
-    });
-
-    // Alert threshold logic — require sustained duration
-    if (status === 'WARNING' || status === 'CRITICAL') {
-      const key = locationId;
-      if (!alertTimerRef.current[key]) {
-        alertTimerRef.current[key] = { status, startTime: timestamp, triggered: false };
-      } else {
-        const elapsed = (timestamp - alertTimerRef.current[key].startTime) / 1000;
-        if (!alertTimerRef.current[key].triggered && elapsed >= settings.alertDurationSeconds) {
-          alertTimerRef.current[key].triggered = true;
-          triggerAlert(locationId, noiseLevel, status, loc.locationName, source);
-        }
-      }
-    } else {
-      // Reset timer if noise dropped back to normal
-      delete alertTimerRef.current[locationId];
-    }
-  }, [locations, settings.alertDurationSeconds, settings.maxHistoryPoints]);
 
   // ── Trigger and save an alert ─────────────────────────────────────────────
   const triggerAlert = useCallback(async (locationId, noiseLevel, severity, locationName, source) => {
@@ -129,6 +97,52 @@ export function AppProvider({ children }) {
       try { await createAlert(newAlert); } catch (_) { /* best-effort */ }
     }
   }, [settings.saveToFirebase]);
+
+  // ── Ingest a noise reading (from simulation OR hardware API) ───────────────
+  const ingestReading = useCallback((locationId, noiseLevel, source = 'simulation') => {
+    const timestamp = new Date();
+    const targetLocation = getLocation(locationId);
+    if (!targetLocation) return { success: false, error: 'Location not found' };
+
+    const loc = targetLocation;
+    const targetLocationId = loc.locationId;
+    const wt = loc.warningThreshold  || 41;
+    const ct = loc.criticalThreshold || 61;
+    const { status } = getNoiseStatus(noiseLevel, wt, ct);
+
+    // Update location's current noise
+    setLocations(prev => prev.map(l =>
+      l.locationId === targetLocationId
+        ? { ...l, currentNoise: noiseLevel, lastUpdated: timestamp, dataSource: source }
+        : l
+    ));
+
+    // Append to history
+    setReadingHistory(prev => {
+      const existing = prev[targetLocationId] || [];
+      const updated  = [...existing, { timestamp, noiseLevel, source }];
+      return { ...prev, [targetLocationId]: updated.slice(-settings.maxHistoryPoints) };
+    });
+
+    // Alert threshold logic — require sustained duration
+    if (status === 'WARNING' || status === 'CRITICAL') {
+      const key = targetLocationId;
+      if (!alertTimerRef.current[key]) {
+        alertTimerRef.current[key] = { status, startTime: timestamp, triggered: false };
+      } else {
+        const elapsed = (timestamp - alertTimerRef.current[key].startTime) / 1000;
+        if (!alertTimerRef.current[key].triggered && elapsed >= settings.alertDurationSeconds) {
+          alertTimerRef.current[key].triggered = true;
+          triggerAlert(targetLocationId, noiseLevel, status, loc.locationName, source);
+        }
+      }
+    } else {
+      // Reset timer if noise dropped back to normal
+      delete alertTimerRef.current[targetLocationId];
+    }
+
+    return { success: true, locationId: targetLocationId, noiseLevel };
+  }, [getLocation, settings.alertDurationSeconds, settings.maxHistoryPoints, triggerAlert]);
 
   // ── Acknowledge alert ─────────────────────────────────────────────────────
   const acknowledgeAlert = useCallback(async (alertId) => {
@@ -198,18 +212,30 @@ export function AppProvider({ children }) {
   }, [selectedLocationId, locations]);
 
   // ── Hardware ingestion endpoint (called by ESP32 HTTP handler) ────────────
-  const ingestHardwareReading = useCallback((payload) => {
-    // Validate
+  const ingestHardwareReading = useCallback((payloadOrLocationId, maybeNoiseLevel, maybeSource) => {
+    const payload = typeof payloadOrLocationId === 'object' && payloadOrLocationId !== null
+      ? payloadOrLocationId
+      : { locationId: payloadOrLocationId, noiseLevel: maybeNoiseLevel, source: maybeSource || 'hardware' };
+
     if (!payload || typeof payload.noiseLevel !== 'number') {
-      console.warn('[Hardware] Invalid payload:', payload);
+      console.warn('[Hardware] Invalid payload:', payloadOrLocationId);
       return { success: false, error: 'Invalid payload' };
     }
-    const { locationId, noiseLevel, deviceId, timestamp } = payload;
+
+    const locationId = payload.locationId ?? payload.roomId;
+    const noiseLevel = Number(payload.noiseLevel);
+    const source = payload.source || maybeSource || 'hardware';
+
+    if (!locationId || typeof locationId !== 'string' || !String(locationId).trim()) {
+      console.warn('[Hardware] Missing locationId:', payload);
+      return { success: false, error: 'Missing locationId' };
+    }
+
     if (noiseLevel < 0 || noiseLevel > 200) {
       return { success: false, error: 'Noise level out of range' };
     }
-    ingestReading(locationId, Math.round(noiseLevel), 'hardware');
-    return { success: true };
+
+    return ingestReading(locationId, Math.round(noiseLevel), source);
   }, [ingestReading]);
 
   // ── Context value ─────────────────────────────────────────────────────────

@@ -33,6 +33,45 @@ function DashboardLayout() {
     registerGlobalIngestor(ingestHardwareReading);
   }, [ingestHardwareReading]);
 
+  // Listen for Grove / ESP32 readings from the local relay server
+  useEffect(() => {
+    const relayHost = window.location.hostname || 'localhost';
+    const relayUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${relayHost}:3001/ws`;
+    const socket = new WebSocket(relayUrl);
+
+    socket.addEventListener('open', () => {
+      console.info('[Relay] Connected to Grove sensor relay');
+    });
+
+    socket.addEventListener('message', (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message?.type !== 'reading' || !message?.payload) return;
+        const payload = message.payload;
+        if (typeof payload.noiseLevel !== 'number' || !payload.locationId) return;
+
+        ingestHardwareReading({
+          ...payload,
+          source: payload.source || 'grove',
+          locationId: payload.locationId,
+          noiseLevel: Number(payload.noiseLevel),
+        });
+      } catch (error) {
+        console.warn('[Relay] Unable to parse sensor payload', error);
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      console.warn('[Relay] Sensor relay disconnected');
+    });
+
+    socket.addEventListener('error', () => {
+      console.warn('[Relay] Sensor relay unavailable at', relayUrl);
+    });
+
+    return () => socket.close();
+  }, [ingestHardwareReading]);
+
   // Show critical overlay ONLY for alerts created in this session (not demo/historical data)
   const hasCritical = sessionAlerts.some(a => !a.acknowledged && a.severity === 'CRITICAL');
 

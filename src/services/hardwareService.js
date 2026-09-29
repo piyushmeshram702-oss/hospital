@@ -141,7 +141,7 @@ export function registerGlobalIngestor(ingestFn) {
         const { valid, error } = validateHardwarePayload(payload);
         if (!valid) { console.error('[HardwareService] Invalid payload:', error); return { success: false, error }; }
         const parsed = parseHardwarePayload(payload);
-        return ingestFn(parsed.locationId, parsed.noiseLevel, 'hardware');
+        return ingestFn(parsed);
       },
       version: '1.0.0',
     };

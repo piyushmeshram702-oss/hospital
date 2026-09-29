@@ -27,6 +27,57 @@ The app **works immediately in demo mode** without any Firebase or hardware conf
 
 ---
 
+## Grove / Arduino Uno Sound Sensor Setup
+
+This project can also accept live readings from a Grove analog sound sensor connected to an Arduino Uno.
+
+### 1) Connect the hardware
+
+Typical wiring:
+- Grove sound sensor VCC → 5V
+- Grove sound sensor GND → GND
+- Grove sound sensor SIG / OUT → A0 on the Uno
+
+### 2) Upload this sketch to the Arduino Uno
+
+```cpp
+const int soundPin = A0;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(soundPin);
+  int mapped = map(raw, 0, 1023, 0, 100);
+  Serial.println(mapped);
+  delay(2000);
+}
+```
+
+### 3) Run the serial bridge on your Mac
+
+From the project folder:
+
+```bash
+node serial-bridge.js --port=/dev/cu.usbmodem1101 --location=ROOM_101 --deviceId=GROVE_SOUND_01
+```
+
+If the port name is different, replace it with the port shown in Arduino IDE or `ls /dev/cu.*`.
+
+The bridge sends each reading to the relay at `http://localhost:3001/reading`.
+
+### 4) Start the relay and dashboard
+
+```bash
+node relay-server.js
+npm run dev -- --host 0.0.0.0 --port 3000
+```
+
+Then open the dashboard and the room will update from the Arduino/Grove sensor instead of the Mac microphone.
+
+---
+
 ## Firebase Setup (Optional)
 
 The app runs fully in demo mode without Firebase. To enable cloud persistence:
