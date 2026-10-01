@@ -38,22 +38,11 @@ Typical wiring:
 - Grove sound sensor GND → GND
 - Grove sound sensor SIG / OUT → A0 on the Uno
 
-### 2) Upload this sketch to the Arduino Uno
+### 2) Upload the function-based sketch
 
-```cpp
-const int soundPin = A0;
+Open [`arduino/grove_sound_sensor/grove_sound_sensor.ino`](arduino/grove_sound_sensor/grove_sound_sensor.ino) in Arduino IDE, select the Arduino Uno and its USB port, then upload it. It measures the sound waveform's peak-to-peak amplitude over a short window and reports a relative 0-100 sensor level. This is not calibrated dB; the Grove analog sensor cannot provide true dB without calibration equipment.
 
-void setup() {
-  Serial.begin(9600);
-}
-
-void loop() {
-  int raw = analogRead(soundPin);
-  int mapped = map(raw, 0, 1023, 0, 100);
-  Serial.println(mapped);
-  delay(2000);
-}
-```
+After uploading, open Serial Monitor at 9600 baud and confirm the output changes when the sound near the sensor changes. Close Serial Monitor before starting the bridge because only one program can use the serial port at a time.
 
 ### 3) Run the serial bridge on your Mac
 
@@ -277,3 +266,4 @@ Add environment variables in Vercel dashboard under Project → Settings → Env
 - [ ] Sensor calibration for accurate dB(A)
 - [ ] Wearable vibration device (ESP32-C3 + BLE)
 - [ ] Firebase Authentication for admin login
+# hospital
