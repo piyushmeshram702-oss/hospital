@@ -45,6 +45,7 @@ export default function DashboardPage() {
   const latestReading = history[history.length - 1];
   const stale         = secondsSince(selLocation?.lastUpdated) > settings.staleDataTimeoutSeconds;
   const noiseLevel    = !stale ? selLocation?.currentNoise : null;
+  const frequencyHz   = !stale ? selLocation?.currentFrequencyHz : null;
   const dataSource    = selLocation?.dataSource || (simMode ? 'simulation' : null);
   const { status }    = getNoiseStatus(noiseLevel, selLocation?.warningThreshold, selLocation?.criticalThreshold);
   const colors        = getStatusColors(status);
@@ -153,6 +154,16 @@ export default function DashboardPage() {
                     </div>
                   );
                 })}
+
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">Estimated frequency</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">
+                      {frequencyHz > 0 ? `${frequencyHz.toLocaleString()} Hz` : 'No estimate'}
+                    </p>
+                  </div>
+                  <Activity className="h-5 w-5 text-teal-600" aria-hidden="true" />
+                </div>
 
                 {latestReading && (
                   <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">

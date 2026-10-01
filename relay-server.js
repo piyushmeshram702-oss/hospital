@@ -140,11 +140,15 @@ function handleRequest(req, res) {
         // Enrich
         const reading = {
           noiseLevel:  Math.round(payload.noiseLevel),
+          frequencyHz: Number.isFinite(payload.frequencyHz) && payload.frequencyHz >= 0 && payload.frequencyHz <= 5000
+            ? Math.round(payload.frequencyHz)
+            : null,
           locationId:  payload.locationId  || 'ROOM_101',
+          deviceId:    payload.deviceId    || null,
           deviceName:  payload.deviceName  || 'Mobile Phone',
           status:      payload.status      || 'NORMAL',
           timestamp:   payload.timestamp   || new Date().toISOString(),
-          source:      'mobile',
+          source:      payload.source      || 'mobile',
         };
 
         // Broadcast to all connected dashboard tabs

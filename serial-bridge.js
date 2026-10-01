@@ -17,29 +17,35 @@ const deviceId = args.deviceId || 'GROVE_SOUND_01';
 const baudRate = Number(args.baud || 9600);
 const pollMs = Number(args.pollMs || 2000);
 
-async function postReading(level) {
+async function postReading(level, frequencyHz) {
   const payload = {
     deviceId,
     locationId,
     noiseLevel: Number(level),
+    frequencyHz: Number.isFinite(frequencyHz) ? Number(frequencyHz) : null,
     deviceName: 'Grove Sound Sensor',
     status: Number(level) >= 70 ? 'WARNING' : 'NORMAL',
+    source: 'grove',
     timestamp: new Date().toISOString(),
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-  const text = await response.text();
-  if (!response.ok) {
-    console.error('[bridge] POST failed', response.status, text);
-    return;
+    const text = await response.text();
+    if (!response.ok) {
+      console.error('[bridge] POST failed', response.status, text);
+      return;
+    }
+
+    console.log('[bridge] sent', payload.noiseLevel, 'sensor level ->', text);
+  } catch (error) {
+    console.error('[bridge] Relay unavailable:', error.message);
   }
-
-  console.log('[bridge] sent', payload.noiseLevel, 'dB ->', text);
 }
 
 const port = new SerialPort({
@@ -63,15 +69,30 @@ port.on('data', async (chunk) => {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const match = trimmed.match(/\d+(?:\.\d+)?/);
-    if (!match) {
+    let reading;
+    if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+      reading = { noiseLevel: Number(trimmed) };
+    } else {
+      try {
+        reading = JSON.parse(trimmed);
+      } catch {
+        reading = null;
+      }
+    }
+
+    if (!reading || typeof reading.noiseLevel !== 'number') {
       console.warn('[bridge] Ignoring serial line:', trimmed);
       continue;
     }
 
-    const level = Number(match[0]);
-    const clamped = Math.max(0, Math.min(100, level));
-    await postReading(clamped);
+    const level = Number(reading.noiseLevel);
+    if (level < 0 || level > 100) {
+      console.warn('[bridge] Ignoring out-of-range sensor level:', level);
+      continue;
+    }
+
+    const frequencyHz = Number(reading.frequencyHz);
+    await postReading(level, Number.isFinite(frequencyHz) && frequencyHz >= 0 && frequencyHz <= 5000 ? frequencyHz : null);
   }
 });
 

@@ -99,7 +99,7 @@ export function AppProvider({ children }) {
   }, [settings.saveToFirebase]);
 
   // ── Ingest a noise reading (from simulation OR hardware API) ───────────────
-  const ingestReading = useCallback((locationId, noiseLevel, source = 'simulation') => {
+  const ingestReading = useCallback((locationId, noiseLevel, source = 'simulation', frequencyHz = null) => {
     const timestamp = new Date();
     const targetLocation = getLocation(locationId);
     if (!targetLocation) return { success: false, error: 'Location not found' };
@@ -113,14 +113,14 @@ export function AppProvider({ children }) {
     // Update location's current noise
     setLocations(prev => prev.map(l =>
       l.locationId === targetLocationId
-        ? { ...l, currentNoise: noiseLevel, lastUpdated: timestamp, dataSource: source }
+        ? { ...l, currentNoise: noiseLevel, currentFrequencyHz: frequencyHz, lastUpdated: timestamp, dataSource: source }
         : l
     ));
 
     // Append to history
     setReadingHistory(prev => {
       const existing = prev[targetLocationId] || [];
-      const updated  = [...existing, { timestamp, noiseLevel, source }];
+      const updated  = [...existing, { timestamp, noiseLevel, frequencyHz, source }];
       return { ...prev, [targetLocationId]: updated.slice(-settings.maxHistoryPoints) };
     });
 
@@ -235,7 +235,12 @@ export function AppProvider({ children }) {
       return { success: false, error: 'Noise level out of range' };
     }
 
-    return ingestReading(locationId, Math.round(noiseLevel), source);
+    const frequencyHz = typeof payload.frequencyHz === 'number' && Number.isFinite(payload.frequencyHz)
+      && payload.frequencyHz >= 0 && payload.frequencyHz <= 5000
+      ? Math.round(payload.frequencyHz)
+      : null;
+
+    return ingestReading(locationId, Math.round(noiseLevel), source, frequencyHz);
   }, [ingestReading]);
 
   // ── Context value ─────────────────────────────────────────────────────────

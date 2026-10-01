@@ -126,7 +126,6 @@ function StatusRow({ status, noiseLevel, warnAt, critAt }) {
 // ═════════════════════════════════════════════════════════════════════════════
 const SOURCE_TABS = [
   { key: 'microphone', label: 'Microphone', icon: Mic,  desc: 'Your device microphone' },
-  { key: 'hardware', label: 'Grove / Arduino', icon: Cpu, desc: 'Real sound sensor' },
   { key: 'simulation', label: 'Simulation', icon: Zap,  desc: 'Demo mode — no hardware' },
 ];
 
@@ -164,12 +163,12 @@ export default function LiveMonitorPage() {
 
   // When switching tabs, stop previous source
   const switchTab = useCallback((tab) => {
-    if (tab === 'microphone' && sourceTab === 'simulation') {
+    if (tab !== 'simulation' && sourceTab === 'simulation') {
       clearInterval(simRef.current);
       simRef.current = null;
       if (simMode) stopSimulation();
     }
-    if (tab === 'simulation' && sourceTab === 'microphone') {
+    if (tab !== 'microphone' && sourceTab === 'microphone') {
       stopMicrophone();
     }
     setSourceTab(tab);
@@ -197,31 +196,6 @@ export default function LiveMonitorPage() {
     setSimScenario('random');
   };
 
-  const handleSendGroveTest = async () => {
-    try {
-      const payload = {
-        deviceId: 'GROVE_SOUND_01',
-        locationId: selectedLocationId,
-        noiseLevel: 56,
-        deviceName: 'Grove Sound Sensor',
-        status: 'WARNING',
-        timestamp: new Date().toISOString(),
-      };
-
-      const response = await fetch('http://localhost:3001/reading', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Sensor relay rejected the reading');
-      }
-    } catch (error) {
-      console.error('[Grove] Test reading failed:', error);
-    }
-  };
-
   const simRunning = !!simRef.current;
 
   // Cleanup on unmount
@@ -238,7 +212,11 @@ export default function LiveMonitorPage() {
     : (!stale && location?.currentNoise !== null && location?.currentNoise !== undefined
       ? location.currentNoise : null);
 
-  const dataSource = isActive ? 'microphone' : (simRunning ? 'simulation' : null);
+  const dataSource = isActive
+    ? 'microphone'
+    : simRunning
+      ? 'simulation'
+      : (!stale ? location?.dataSource : null);
   const warnAt     = location?.warningThreshold  || 41;
   const critAt     = location?.criticalThreshold || 61;
   const { status } = getNoiseStatus(noiseLevel, warnAt, critAt);
@@ -264,11 +242,14 @@ export default function LiveMonitorPage() {
           {/* Source indicator pill */}
           {dataSource && (
             <span className={`hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${
-              dataSource === 'microphone' ? 'bg-teal-50 text-teal-700 border-teal-200'
-              : 'bg-purple-50 text-purple-700 border-purple-200'
+              dataSource === 'microphone' || dataSource === 'grove' || dataSource === 'hardware'
+                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                : 'bg-purple-50 text-purple-700 border-purple-200'
             }`}>
               <span className="w-1.5 h-1.5 rounded-full live-dot bg-current" />
-              {dataSource === 'microphone' ? '🎤 MIC LIVE' : '⚡ SIMULATION'}
+              {dataSource === 'grove' || dataSource === 'hardware'
+                ? 'GROVE LIVE'
+                : dataSource === 'microphone' ? 'MIC LIVE' : 'SIMULATION'}
             </span>
           )}
           <button
@@ -329,7 +310,7 @@ export default function LiveMonitorPage() {
               )}
             </div>
 
-            {/* Mic active strip */}
+            {/* Microphone active strip */}
             {isActive && (
               <div className={`p-3 rounded-xl mb-4 border ${
                 status === 'CRITICAL' ? 'bg-red-50 border-red-200'
@@ -354,7 +335,7 @@ export default function LiveMonitorPage() {
                     micDevice === 'external' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                   }`}>
                     <Cpu className="w-3 h-3" />
-                    {micDevice === 'external' ? '🎧 External / Earbuds' : '💻 Built-in Microphone'}
+                    {micDevice === 'external' ? 'External / Earbuds' : 'Built-in Microphone'}
                     {micLabel ? ` — ${micLabel.slice(0, 40)}` : ''}
                   </span>
                 )}
@@ -424,7 +405,7 @@ export default function LiveMonitorPage() {
             </div>
 
             {/* Mic CTA when idle */}
-            {!isActive && !simRunning && (
+            {!isActive && !simRunning && noiseLevel === null && sourceTab === 'microphone' && (
               <div className="mt-5 flex flex-col sm:flex-row items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-teal-50 to-sky-50 border border-teal-100">
                 <Mic className="w-8 h-8 text-teal-500" />
                 <div>
@@ -449,6 +430,7 @@ export default function LiveMonitorPage() {
               <div>
                 <h3 className="font-bold text-slate-800">Noise History</h3>
                 {isActive && <p className="text-xs text-teal-600 font-semibold">🎤 Recording live</p>}
+                {(dataSource === 'grove' || dataSource === 'hardware') && <p className="text-xs text-emerald-600 font-semibold">Arduino Grove sensor live</p>}
                 {simRunning && <p className="text-xs text-purple-600 font-semibold">⚡ Simulation running</p>}
               </div>
               <span className="text-xs text-slate-400">{history.length} readings</span>
@@ -463,7 +445,11 @@ export default function LiveMonitorPage() {
             ) : (
               <div className="h-56 flex flex-col items-center justify-center gap-3 text-slate-300">
                 <Activity className="w-12 h-12" />
-                <p className="text-sm">Start microphone or simulation to see chart</p>
+                <p className="text-sm">
+                  {sourceTab === 'microphone'
+                    ? 'Start the microphone to see chart'
+                    : 'Start a simulation to see chart'}
+                </p>
               </div>
             )}
             {/* Session stats */}
@@ -600,35 +586,6 @@ export default function LiveMonitorPage() {
 
                 <p className="text-xs text-center text-slate-400">
                   Relative level · Not calibrated dB(A) · Accuracy varies by device
-                </p>
-              </div>
-            )}
-
-            {/* Hardware / Grove panel */}
-            {sourceTab === 'hardware' && (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
-                  <Cpu className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-emerald-700">
-                    <strong>Arduino + Grove sensor</strong> — connect a real sound sensor to the Uno and send readings to the local relay.
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
-                  <p><span className="font-bold text-slate-700">1.</span> Connect the Grove sound sensor to A0 on the Arduino Uno.</p>
-                  <p><span className="font-bold text-slate-700">2.</span> Upload the sample sketch from the project README.</p>
-                  <p><span className="font-bold text-slate-700">3.</span> Run <span className="font-mono bg-slate-200 px-1 rounded">node relay-server.js</span> and then the bridge script.</p>
-                </div>
-
-                <button
-                  onClick={handleSendGroveTest}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all active:scale-95"
-                >
-                  <Cpu className="w-4 h-4" /> Send Test Grove Reading
-                </button>
-
-                <p className="text-xs text-center text-slate-400">
-                  Use <span className="font-mono text-slate-500">http://localhost:3001/reading</span> as the sensor endpoint.
                 </p>
               </div>
             )}
